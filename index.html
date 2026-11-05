@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulateur d'IRM</title>
+  <meta name="description" content="Simulateur d'IRM : équations de Bloch, séquences écho de spin, turbo, écho de gradient, FLAIR et STIR, espace k rempli avec le signal exact, reconstruction par FFT, artefacts physiques (repliement, déplacement chimique, mouvement, métal, Gibbs) et comparaison avec le scanner.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0c0c0d; --panel: #161618; --border: #262628; --border-hi: #3a3a3d;
+      --text: #f2f2f2; --dim: #9b9b9f; --muted: #6c6c70; --accent: #c8102e; --line: #c9c9cc; --warn: #e0a458; --ok: #8fd18f;
+      --mono: "JetBrains Mono", ui-monospace, monospace; --sans: "Inter", system-ui, sans-serif;
+      color-scheme: dark;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px)); }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+    .back { font-size: 0.9rem; color: var(--dim); text-decoration: none; }
+    .back:hover { color: var(--accent); }
+    .lang { display: flex; border: 1px solid var(--border-hi); }
+    .lang button { font: 500 0.78rem var(--mono); letter-spacing: .05em; background: none; color: var(--dim); border: 0; padding: 5px 10px; cursor: pointer; }
+    .lang button + button { border-left: 1px solid var(--border-hi); }
+    .lang button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+    .eyebrow { font: 500 0.82rem var(--mono); color: var(--accent); letter-spacing: .04em; }
+    h1 { font-size: clamp(1.6rem, 3.4vw, 2.3rem); line-height: 1.15; margin: 6px 0 10px; text-wrap: balance; }
+    .intro { color: var(--dim); max-width: 86ch; }
+    .warnbox { border: 1px solid #4a3a20; background: #1a160f; color: var(--warn); border-radius: 6px; padding: 8px 12px; font-size: 0.84rem; margin-top: 12px; }
+    .tabs { display: flex; gap: 8px; margin: 24px 0 16px; flex-wrap: wrap; }
+    .tab { font: 0.85rem var(--mono); background: none; color: var(--dim); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+    .tab[aria-selected="true"] { color: var(--accent); border-color: var(--accent); }
+    [hidden] { display: none !important; }
+    .grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 20px; align-items: start; }
+    .stack { display: grid; gap: 16px; min-width: 0; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-width: 0; }
+    h2 { font: 600 0.78rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    h3 { font: 600 0.72rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 14px 0 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn { font: 500 0.8rem var(--sans); background: none; color: var(--text); border: 1px solid var(--border-hi); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { color: #fff; filter: brightness(1.1); }
+    .seg { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .lbl { font: 500 0.76rem var(--mono); color: var(--dim); margin-bottom: 4px; }
+    .ctl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; margin-bottom: 10px; }
+    .ctl label { font: 500 0.76rem var(--mono); color: var(--dim); }
+    .ctl output { font: 0.8rem var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+    .ctl input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+    .ctl .sub { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+    .ctl .sub .btn { font-size: 0.72rem; padding: 3px 8px; }
+    .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+    .kpi { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+    .kpi dt { font: 0.66rem var(--mono); color: var(--dim); }
+    .kpi dd { font: 600 1.02rem var(--sans); font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+    .kpi dd small { font: 400 0.7rem var(--mono); color: var(--dim); margin-left: 3px; }
+    .kpi.main dd { color: var(--accent); }
+    .imgs { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+    .side { display: grid; gap: 12px; align-content: start; min-width: 0; }
+    figure { min-width: 0; }
+    figure figcaption { font: 0.72rem var(--mono); color: var(--dim); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 6px; }
+    figure canvas { width: 100%; aspect-ratio: 1; display: block; border: 1px solid var(--border); border-radius: 6px; background: #000; }
+    canvas.pix { image-rendering: pixelated; }
+    .four { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .readout { font: 0.74rem var(--mono); color: var(--dim); margin-top: 6px; min-height: 1.2em; }
+    .busy { font: 0.74rem var(--mono); color: var(--warn); }
+    .chart canvas { width: 100%; height: 220px; display: block; border: 1px solid var(--border); border-radius: 6px; background: #0a0a0b; }
+    .chart p { font: 0.72rem var(--mono); color: var(--dim); margin-bottom: 4px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .chart p i { display: inline-block; width: 12px; height: 2px; vertical-align: 3px; margin-right: 5px; }
+    .charts3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .charts3 canvas { height: 230px; cursor: crosshair; }
+    .bloch { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; }
+    .bloch canvas { width: 100%; display: block; border: 1px solid var(--border); border-radius: 6px; background: #0a0a0b; }
+    #cv3d { aspect-ratio: 1; } #cvChrono { height: 100%; min-height: 300px; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; font: 0.78rem var(--mono); color: var(--dim); }
+    table { width: 100%; border-collapse: collapse; font: 0.78rem var(--mono); font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    td.n, th.n { text-align: right; }
+    th { color: var(--dim); font-weight: 500; }
+    td.good { color: var(--ok); } td.bad { color: #ff8a8a; }
+    .tablewrap { overflow-x: auto; }
+    .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+    .hint { font-size: 0.8rem; color: var(--dim); margin-top: 8px; }
+    .note { font-size: 0.82rem; color: var(--dim); }
+    .note p + p { margin-top: 6px; }
+    .note b { color: var(--text); font-weight: 600; }
+    .warn { color: var(--warn); font-size: 0.8rem; margin-top: 6px; }
+    @media (max-width: 1150px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .four { grid-template-columns: repeat(2, minmax(0, 1fr)); } .charts3 { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 1000px) { .grid { grid-template-columns: minmax(0, 1fr); } .main-col { order: -1; } }
+    @media (max-width: 760px) { .imgs { grid-template-columns: minmax(0, 1fr); } .side { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bloch { grid-template-columns: minmax(0, 1fr); } .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="back" href="https://valentin-auger-laboratoire.github.io/portfolio/#projets" data-t="back">← Retour au portfolio</a>
+      <div class="lang" role="group" aria-label="Langue / Language">
+        <button type="button" data-lang="fr" aria-pressed="true">FR</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </div>
+    <p class="eyebrow" data-t="eyebrow">Outil d'imagerie médicale · résonance magnétique</p>
+    <h1 data-t="title">Simulateur d'IRM : de l'aimantation à l'image</h1>
+    <p class="intro" data-t="intro"></p>
+    <div class="warnbox" data-t="notMedical"></div>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" data-view="image" aria-selected="true" data-t="tImage">L'image</button>
+      <button type="button" class="tab" role="tab" data-view="bloch" aria-selected="false" data-t="tBloch">L'aimantation</button>
+      <button type="button" class="tab" role="tab" data-view="contrast" aria-selected="false" data-t="tContrast">Le contraste</button>
+      <button type="button" class="tab" role="tab" data-view="ct" aria-selected="false" data-t="tCt">Scanner ou IRM ?</button>
+      <button type="button" class="tab" role="tab" data-view="checks" aria-selected="false" data-t="tChecks">Vérifications</button>
+    </div>
+
+    <div class="grid">
+      <div class="stack" id="ctlCol">
+        <div class="panel" id="ctl"></div>
+      </div>
+      <div class="stack main-col">
+        <!-- ============ IMAGE ============ -->
+        <section data-pane="image" class="stack">
+          <div class="panel">
+            <dl class="kpis" id="kpis"></dl>
+            <p class="warn" id="seqWarn" hidden></p>
+            <div class="imgs">
+              <figure><figcaption><span data-t="cImg">Image reconstruite</span><span id="busy" class="busy"></span></figcaption><canvas id="cvImg" width="256" height="256" aria-label="Image IRM"></canvas></figure>
+              <div class="side">
+                <figure><figcaption><span data-t="cK">Espace k (mesures)</span></figcaption><canvas id="cvK" class="pix" width="256" height="128" aria-label="Espace k"></canvas></figure>
+                <figure><figcaption><span data-t="cTruth">Patient virtuel</span></figcaption><canvas id="cvTruth" width="256" height="256" aria-label="Carte des tissus"></canvas></figure>
+              </div>
+            </div>
+            <p class="readout" id="readout"></p>
+            <div class="controls">
+              <button type="button" class="btn primary" id="play" data-t="play">Lancer l'acquisition</button>
+              <span id="animInfo"></span>
+            </div>
+            <p class="hint" data-t="imgHint"></p>
+          </div>
+          <div class="panel">
+            <h2><span data-t="roiT">Mesuré sur l'image et prévu par Bloch</span></h2>
+            <div class="tablewrap"><table id="roi"></table></div>
+            <p class="hint" data-t="roiHint"></p>
+          </div>
+          <div class="panel note">
+            <p data-t="noteImg1"></p>
+            <p data-t="noteImg2"></p>
+            <p data-t="noteImg3"></p>
+          </div>
+        </section>
+
+        <!-- ============ BLOCH ============ -->
+        <section data-pane="bloch" class="stack" hidden>
+          <div class="panel">
+            <h2><span data-t="blochT">Les protons d'un voxel pendant la séquence</span><span class="seg" id="blochTis" style="margin:0"></span></h2>
+            <div class="bloch">
+              <canvas id="cv3d" aria-label="Aimantation en 3D"></canvas>
+              <canvas id="cvChrono" aria-label="Chronogramme de la séquence"></canvas>
+            </div>
+            <div class="controls">
+              <button type="button" class="btn primary" id="bPlay" data-t="pause">Pause</button>
+              <span data-t="speedL">Vitesse</span><span class="seg" id="bSpeed" style="margin:0"></span><span id="bClock"></span>
+            </div>
+            <p class="hint" data-t="blochHint"></p>
+          </div>
+          <div class="panel chart">
+            <p><span data-t="lgMz">pointillés : aimantation longitudinale Mz</span><span data-t="lgMxy">trait plein : aimantation transversale |Mxy| (le signal)</span><span id="lgTis"></span></p>
+            <canvas id="cvTR" style="height:240px"></canvas>
+            <div class="tablewrap" style="margin-top:10px"><table id="blochTab"></table></div>
+          </div>
+          <div class="panel note"><p data-t="noteBloch1"></p><p data-t="noteBloch2"></p></div>
+        </section>
+
+        <!-- ============ CONTRASTE ============ -->
+        <section data-pane="contrast" class="stack" hidden>
+          <div class="panel chart">
+            <p id="lgC"></p>
+            <div class="charts3">
+              <figure><figcaption id="capTR"></figcaption><canvas id="cvCTR"></canvas></figure>
+              <figure><figcaption id="capTE"></figcaption><canvas id="cvCTE"></canvas></figure>
+              <figure><figcaption id="capX"></figcaption><canvas id="cvCX"></canvas></figure>
+            </div>
+            <p class="hint" data-t="contrastHint"></p>
+          </div>
+          <div class="panel"><h2><span data-t="ratioT">Contrastes avec les réglages actuels</span></h2><div class="tablewrap"><table id="ratios"></table></div></div>
+          <div class="panel note"><p data-t="noteC1"></p><p data-t="noteC2"></p></div>
+        </section>
+
+        <!-- ============ SCANNER OU IRM ============ -->
+        <section data-pane="ct" class="stack" hidden>
+          <div class="panel">
+            <h2><span data-t="ctT">Le même patient, deux machines</span><span id="ctBusy" class="busy"></span></h2>
+            <div class="four">
+              <figure><figcaption data-t="cCt">Scanner (fenêtre cerveau)</figcaption><canvas id="cvCt" width="256" height="256"></canvas></figure>
+              <figure><figcaption data-t="cT1">IRM T1</figcaption><canvas id="cvT1" width="128" height="128"></canvas></figure>
+              <figure><figcaption data-t="cT2">IRM T2</figcaption><canvas id="cvT2" width="128" height="128"></canvas></figure>
+              <figure><figcaption data-t="cFl">IRM FLAIR</figcaption><canvas id="cvFl" width="128" height="128"></canvas></figure>
+            </div>
+            <div class="tablewrap" style="margin-top:12px"><table id="ctTab"></table></div>
+            <p class="hint" data-t="ctHint"></p>
+          </div>
+          <div class="panel note"><p data-t="noteCt1"></p><p data-t="noteCt2"></p></div>
+        </section>
+
+        <!-- ============ VÉRIFICATIONS ============ -->
+        <section data-pane="checks" class="stack" hidden>
+          <div class="panel">
+            <h2><span data-t="chkT">Vérifié en direct dans votre navigateur</span><span id="chkBusy" class="busy"></span></h2>
+            <div class="tablewrap"><table id="chk"></table></div>
+            <p class="hint" data-t="chkHint"></p>
+          </div>
+          <div class="panel note"><p data-t="noteChk1"></p><p data-t="noteChk2"></p></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="irm.js"></script>
+  <script src="scanner.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    const I = window.IRM;
+    const $ = (id) => document.getElementById(id);
+    let lang = 'fr';
+    try { lang = localStorage.getItem('lang') || ((navigator.language || 'fr').toLowerCase().startsWith('fr') ? 'fr' : 'en'); } catch (e) {}
+    const T = {
+      fr: {
+        back: '← Retour au portfolio', eyebrow: "Outil d'imagerie médicale · résonance magnétique", title: "Simulateur d'IRM : de l'aimantation à l'image",
+        intro: "Dans un champ de 1,5 tesla, les protons de l'eau et de la graisse s'alignent et tournent sur eux-mêmes à 63,9 MHz. Une impulsion radio les bascule ; en revenant à l'équilibre, ils émettent un signal qui dépend du tissu (temps T1 et T2). Des gradients de champ codent la position, ligne par ligne, dans l'« espace k », et une transformée de Fourier donne l'image. Ici, tout est calculé : les équations de Bloch donnent le contraste, le signal de chaque ligne de l'espace k est exact, et chaque artefact vient de sa cause physique.",
+        notMedical: "Outil pédagogique : coupe 2D, antenne homogène, pas de diffusion ni d'imagerie parallèle ; valeurs de l'œdème et de l'hématome illustratives. Ce n'est pas un logiciel d'imagerie médicale.",
+        tImage: "L'image", tBloch: "L'aimantation", tContrast: 'Le contraste', tCt: 'Scanner ou IRM ?', tChecks: 'Vérifications',
+        cImg: 'Image reconstruite', cK: 'Espace k (mesures)', cTruth: 'Patient virtuel', play: "Lancer l'acquisition", stop: 'Arrêter', pause: 'Pause', resume: 'Reprendre',
+        imgHint: "Espace k : une ligne par impulsion (codage de phase, de haut en bas), les échantillons de lecture de gauche à droite ; le centre porte le contraste, les bords les détails. « Lancer l'acquisition » remplit l'espace k dans l'ordre réel et reconstruit l'image à chaque ligne. Survoler l'image affiche le tissu et la valeur.",
+        roiT: "Mesuré sur l'image et prévu par Bloch", roiHint: "Moyenne mesurée au centre de chaque région (loin des bords), comparée au signal prévu par les équations de Bloch au centre de l'espace k. Rapport signal sur bruit = moyenne / écart-type du bruit mesuré sur l'image.",
+        noteImg1: "Comment l'image est fabriquée : le patient virtuel est fait d'ellipses. La transformée de Fourier d'une ellipse est connue exactement (fonction de Bessel J1) : chaque échantillon de l'espace k est donc le signal exact que mesurerait l'antenne, avec le contraste donné par Bloch, la décroissance T2* pendant la lecture et la fréquence propre de la graisse. L'image est reconstruite par FFT (écrite à la main), comme sur une vraie machine. Avec le métal, le signal est intégré sur une grille fine (chaque élément est déplacé selon son décalage de fréquence) : c'est plus lent.",
+        noteImg2: "Les artefacts sont des conséquences, pas des effets dessinés : champ de vue en phase trop petit → repliement (en lecture, le récepteur sur-échantillonne ×2 et filtre : pas de repliement) ; graisse à −3,5 ppm (−224 Hz) → décalée de 224 / (bande passante par pixel) pixels en lecture ; patient qui bouge entre deux lignes → erreur de phase → fantômes dans le sens de la phase ; espace k tronqué → oscillations de Gibbs (≈ 9 %) ; sphère métallique → champ déformé en 1/r³ → distorsion, et trou plus grand en écho de gradient.",
+        noteImg3: "Valeurs à 1,5 T : substance blanche, substance grise, muscle et sang d'après Stanisz et al. (Magn. Reson. Med., 2005) ; graisse sous-cutanée d'après Gold et al. (AJR, 2004) ; liquide céphalo-rachidien : valeurs usuelles ; os cortical : indicatif ; œdème et hématome : illustratifs. Bruit : rapport signal sur bruit ∝ volume du voxel × √(lignes × colonnes × moyennages / bande passante).",
+        blochT: "Les protons d'un voxel pendant la séquence", speedL: 'Vitesse',
+        blochHint: "À gauche, l'aimantation dans le repère qui tourne avec les protons : axe vertical = champ B0. En gris, douze paquets de protons qui ne tournent pas tout à fait à la même vitesse (inhomogénéités) ; en rouge, leur somme, qui fait le signal. En écho de spin, l'impulsion de 180° les retourne et ils se rejoignent : c'est l'écho. À droite, le chronogramme : impulsions radio, gradients (schéma, amplitudes non à l'échelle) et signal.",
+        lgMz: 'pointillés : aimantation longitudinale Mz', lgMxy: 'trait plein : aimantation transversale |Mxy| (le signal)',
+        noteBloch1: "Équations de Bloch : entre deux impulsions, chaque paquet de protons tourne autour de B0 et relaxe : Mz revient vers M0 en T1, Mxy décroît en T2. Une impulsion est une rotation. Le simulateur applique ces opérations exactement (pas d'approximation pas à pas), répète le TR jusqu'au régime établi, puis lit le signal à chaque écho.",
+        noteBloch2: "T2* : les paquets ont des fréquences réparties selon une loi de Lorentz (inhomogénéité R2'). Leur somme décroît en e^(−t/T2)·e^(−R2'·t) : c'est le T2*. L'écho de spin annule R2' au temps TE, l'écho de gradient non.",
+        contrastHint: "Cliquer sur un graphique change le réglage. Chaque point est un calcul de Bloch au régime établi (signal au centre de l'espace k).",
+        ratioT: 'Contrastes avec les réglages actuels',
+        noteC1: "T1 court = récupère vite = clair avec un TR court (pondération T1). T2 long = décroît lentement = clair avec un TE long (pondération T2). L'inversion-récupération éteint un tissu quand Mz passe par zéro au temps TI : FLAIR (liquide céphalo-rachidien), STIR (graisse).",
+        noteC2: "Le contraste substance grise / substance blanche est faible en écho de spin T1 avec ces valeurs : c'est pour cela qu'on utilise souvent, en clinique, une préparation par inversion (bouton « T1 inv. »).",
+        ctT: 'Le même patient, deux machines', cCt: 'Scanner (fenêtre cerveau)', cT1: 'IRM T1', cT2: 'IRM T2', cFl: 'IRM FLAIR',
+        ctHint: "Le scanner est calculé par le simulateur de scanner du portfolio (projections exactes, bruit de photons, rétroprojection filtrée) sur les mêmes ellipses, avec la densité de chaque tissu en unités Hounsfield.",
+        noteCt1: "Le scanner mesure la densité aux rayons X : l'os est blanc, le sang frais d'un hématome ressort (≈ 70 HU contre ≈ 30), il est rapide (quelques secondes), mais il irradie et distingue mal les tissus mous entre eux. L'IRM mesure les protons et leur environnement : pas de rayons X, un contraste des tissus mous bien plus riche, mais l'examen dure plusieurs minutes et le métal pose problème.",
+        noteCt2: "Exemple de l'œdème d'un AVC de quelques heures (valeurs illustratives) : à peine quelques HU d'écart au scanner, alors qu'il ressort en T2 et en FLAIR. En pratique, l'IRM de diffusion, non simulée ici, le voit encore plus tôt.",
+        chkT: 'Vérifié en direct dans votre navigateur',
+        chkHint: "Chaque ligne est recalculée maintenant, avec le moteur de la page. Les tests automatiques du dépôt (node tests/test.js) en vérifient plus de 400.",
+        noteChk1: "Ce qui est vérifié : Bloch contre les formules analytiques (écho de spin, inversion-récupération, écho de gradient) ; FFT contre la transformée discrète directe ; transformée de l'ellipse contre une intégration numérique ; valeurs mesurées sur l'image contre la théorie ; lois du bruit ; déplacement chimique ; repliement ; fantômes de mouvement ; Gibbs ; moteur sur grille contre moteur exact.",
+        noteChk2: "Limites : une coupe 2D (pas de profil de coupe, pas de déplacement hors du plan près du métal), une antenne homogène, des impulsions parfaites, pas de diffusion, pas d'imagerie parallèle, pas de flux. La graisse est un seul pic à −3,5 ppm.",
+        // contrôles
+        phT: 'Patient', phBrain: 'Cerveau', phQa: 'Fantôme de contrôle', preT: 'Séquence', kindT: 'Type',
+        kSE: 'Écho de spin', kGRE: 'Écho de gradient', kIR: 'Inversion', etl: 'Facteur turbo (échos par TR)', esp: 'Espacement des échos', tiNullCsf: 'annuler le LCR', tiNullFat: 'annuler la graisse', ernst: "angle d'Ernst (SB)",
+        acqT: 'Acquisition', matrix: 'Matrice', fovx: 'Champ de vue (lecture)', fovy: 'Champ de vue (phase)', thk: 'Épaisseur de coupe', bw: 'Bande passante', nex: 'Moyennages', pf: 'Fourier partiel', pfZero: 'zéros', pfConj: 'symétrie', filt: 'Filtre', fNone: 'aucun', fHam: 'Hamming', order: 'Ordre des lignes', oSeq: 'séquentiel', oCen: 'centré',
+        artT: 'Artefacts', motion: 'Mouvement du patient', mNone: 'aucun', mBreath: 'respiration', mJump: 'bouge une fois', amp: 'Amplitude', period: 'Période', metal: 'Métal (clip de 3 mm)', meNone: 'aucun', meTi: 'titane', meSteel: 'acier inox', r2p: "Inhomogénéité R2'", noise: 'Bruit', on: 'oui', off: 'non',
+        kTime: "Durée de l'examen", kVox: 'Voxel', kSnr: 'Signal / bruit (SB)', kFat: 'Déplacement graisse', kTE: 'TE effectif', kEng: 'Calcul', engExact: 'exact (ellipses)', engGrid: 'grille fine (métal)',
+        seqBad: "Réglage impossible : les échos ne tiennent pas dans le TR. Allongez le TR ou réduisez TE, TI ou le facteur turbo.",
+        computing: 'calcul…', line: 'ligne', echo: 'écho', of: 'sur', simTime: 'temps simulé',
+        roiCols: ['Tissu', 'T1 (ms)', 'T2 (ms)', 'DP', 'Prévu', 'Mesuré', 'Écart', 'Signal/bruit'],
+        tis: { wm: 'Substance blanche', gm: 'Substance grise', csf: 'Liquide céphalo-rachidien', fat: 'Graisse', muscle: 'Muscle', blood: 'Sang', bone: 'Os cortical', edema: 'Œdème (AVC récent)', hematoma: 'Hématome', metal: 'Métal', air: 'Air' },
+        tisShort: { wm: 'SB', gm: 'SG', csf: 'LCR', fat: 'graisse', muscle: 'muscle', blood: 'sang', bone: 'os', edema: 'œdème', hematoma: 'hématome', metal: 'métal', air: 'air' },
+        bCols: ['Tissu', 'Mz avant la séquence', 'Signal à TE (Bloch)', 'Formule', 'Écart'],
+        capTR: 'Signal selon TR', capTE: 'Signal selon TE', capTI: 'Signal selon TI (inversion)', capFlip: "Signal selon l'angle de bascule", capNone: "Inversion : choisir le type « Inversion »",
+        ratCols: ['Contraste', 'Rapport', 'Lecture'],
+        ratRows: [['wm', 'gm', 'SB / SG'], ['csf', 'wm', 'LCR / SB'], ['edema', 'wm', 'œdème / SB'], ['hematoma', 'wm', 'hématome / SB'], ['fat', 'wm', 'graisse / SB']],
+        brighter: 'plus clair', darker: 'plus sombre', same: 'presque pareil',
+        ctCols: ['', 'Scanner', 'IRM T1', 'IRM T2', 'IRM FLAIR'],
+        ctRows: { hem: 'Hématome / cerveau', ede: 'Œdème / cerveau', bone: 'Os du crâne', csf: 'Ventricules', time: "Durée d'acquisition", xray: 'Rayons X' },
+        yes: 'oui', no: 'non', bright: 'blanc', dark: 'noir', s: 's',
+        chkCols: ['Vérification', 'Prévu', 'Mesuré', ''],
+        chk: { se: 'Bloch = formule, écho de spin (8 tissus)', ir: 'Bloch = formule, inversion-récupération', gre: 'Bloch = formule, écho de gradient', ti: 'TI qui annule le LCR : formule = Bloch', fft: 'FFT = transformée directe (N = 256)', ell: "Transformée de l'ellipse = intégration numérique", roi: 'Tubes du fantôme : mesuré = Bloch (écho de spin T1)', gibbs: 'Gibbs au bord d\'un disque (256²)', fat: 'Déplacement de la graisse en lecture', noise: 'Bruit mesuré = bruit prévu', alias: 'Repliement en phase (objet à y = 90 mm, champ 120 mm)', ghost: 'Fantômes de respiration (période 4 s)', grid: 'Grille fine = calcul exact (sans métal)', metal: 'Métal : trou en écho de gradient > écho de spin' },
+        ok: 'ok', fail: 'écart',
+      },
+      en: {
+        back: '← Back to portfolio', eyebrow: 'Medical imaging tool · magnetic resonance', title: 'MRI simulator: from magnetisation to image',
+        intro: "In a 1.5 tesla field, the protons of water and fat line up and spin at 63.9 MHz. A radio pulse tips them over; as they return to equilibrium they emit a signal that depends on the tissue (T1 and T2 times). Field gradients encode position, line by line, in “k-space”, and a Fourier transform gives the image. Here everything is computed: the Bloch equations give the contrast, the signal of each k-space line is exact, and every artefact comes from its physical cause.",
+        notMedical: 'Teaching tool: 2D slice, uniform coil, no diffusion or parallel imaging; oedema and haematoma values are illustrative. Not medical imaging software.',
+        tImage: 'The image', tBloch: 'Magnetisation', tContrast: 'Contrast', tCt: 'CT or MRI?', tChecks: 'Checks',
+        cImg: 'Reconstructed image', cK: 'k-space (measurements)', cTruth: 'Virtual patient', play: 'Start the acquisition', stop: 'Stop', pause: 'Pause', resume: 'Resume',
+        imgHint: "k-space: one line per excitation (phase encoding, top to bottom), readout samples from left to right; the centre carries the contrast, the edges the detail. “Start the acquisition” fills k-space in the real order and reconstructs the image after each line. Hover over the image to read the tissue and value.",
+        roiT: 'Measured on the image vs predicted by Bloch', roiHint: 'Mean measured in the middle of each region (away from edges), compared with the signal predicted by the Bloch equations at the centre of k-space. Signal-to-noise = mean / standard deviation of the noise measured on the image.',
+        noteImg1: "How the image is made: the virtual patient is made of ellipses. The Fourier transform of an ellipse is known exactly (Bessel function J1), so every k-space sample is the exact signal the coil would measure, with the contrast given by Bloch, T2* decay during readout and the fat's own frequency. The image is reconstructed by FFT (hand-written), as on a real scanner. With metal, the signal is integrated over a fine grid (each element shifted by its frequency offset): slower.",
+        noteImg2: "Artefacts are consequences, not drawn effects: phase field of view too small → wrap-around (in readout the receiver oversamples ×2 and filters: no wrap); fat at −3.5 ppm (−224 Hz) → shifted by 224 / (bandwidth per pixel) pixels in readout; patient moving between lines → phase error → ghosts along the phase direction; truncated k-space → Gibbs ringing (≈ 9 %); metal sphere → field distorted as 1/r³ → distortion, and a larger hole in gradient echo.",
+        noteImg3: 'Values at 1.5 T: white matter, grey matter, muscle and blood from Stanisz et al. (Magn. Reson. Med., 2005); subcutaneous fat from Gold et al. (AJR, 2004); cerebrospinal fluid: usual values; cortical bone: indicative; oedema and haematoma: illustrative. Noise: SNR ∝ voxel volume × √(lines × columns × averages / bandwidth).',
+        blochT: 'The protons of one voxel during the sequence', speedL: 'Speed',
+        blochHint: 'Left: magnetisation in the frame rotating with the protons; vertical axis = B0 field. In grey, twelve spin packets that do not spin at exactly the same rate (inhomogeneity); in red, their sum, which is the signal. In spin echo the 180° pulse flips them and they come back together: that is the echo. Right: the timing diagram: radio pulses, gradients (schematic, amplitudes not to scale) and signal.',
+        lgMz: 'dashed: longitudinal magnetisation Mz', lgMxy: 'solid: transverse magnetisation |Mxy| (the signal)',
+        noteBloch1: 'Bloch equations: between pulses each spin packet precesses around B0 and relaxes: Mz returns to M0 with T1, Mxy decays with T2. A pulse is a rotation. The simulator applies these operations exactly (no time-stepping approximation), repeats the TR until steady state, then reads the signal at each echo.',
+        noteBloch2: "T2*: the packets have frequencies spread as a Lorentzian (inhomogeneity R2'). Their sum decays as e^(−t/T2)·e^(−R2'·t): that is T2*. Spin echo cancels R2' at time TE, gradient echo does not.",
+        contrastHint: 'Click on a chart to change the setting. Each point is a steady-state Bloch calculation (signal at the centre of k-space).',
+        ratioT: 'Contrast with the current settings',
+        noteC1: 'Short T1 = recovers fast = bright with a short TR (T1 weighting). Long T2 = decays slowly = bright with a long TE (T2 weighting). Inversion recovery nulls a tissue when Mz crosses zero at time TI: FLAIR (cerebrospinal fluid), STIR (fat).',
+        noteC2: 'Grey / white matter contrast is weak in T1 spin echo with these values: that is why an inversion preparation is often used clinically (“T1 inv.” button).',
+        ctT: 'Same patient, two machines', cCt: 'CT (brain window)', cT1: 'MRI T1', cT2: 'MRI T2', cFl: 'MRI FLAIR',
+        ctHint: "The CT image is computed by the portfolio's CT simulator (exact projections, photon noise, filtered back-projection) on the same ellipses, with each tissue's density in Hounsfield units.",
+        noteCt1: 'CT measures X-ray density: bone is white, the fresh blood of a haematoma stands out (≈ 70 HU vs ≈ 30), and it is fast (a few seconds), but it uses ionising radiation and separates soft tissues poorly. MRI measures protons and their environment: no X-rays, much richer soft-tissue contrast, but the scan takes minutes and metal is a problem.',
+        noteCt2: 'Example of the oedema of a stroke a few hours old (illustrative values): only a few HU of difference on CT, while it stands out on T2 and FLAIR. In practice, diffusion MRI, not simulated here, sees it even earlier.',
+        chkT: 'Checked live in your browser',
+        chkHint: "Each line is recomputed now, with this page's engine. The repository's automated tests (node tests/test.js) check more than 400.",
+        noteChk1: 'What is checked: Bloch against the analytical formulas (spin echo, inversion recovery, gradient echo); FFT against the direct discrete transform; ellipse transform against numerical integration; values measured on the image against theory; noise laws; chemical shift; wrap-around; motion ghosts; Gibbs; grid engine against exact engine.',
+        noteChk2: 'Limits: a 2D slice (no slice profile, no through-plane shift near metal), a uniform coil, perfect pulses, no diffusion, no parallel imaging, no flow. Fat is a single peak at −3.5 ppm.',
+        phT: 'Patient', phBrain: 'Brain', phQa: 'Test phantom', preT: 'Sequence', kindT: 'Type',
+        kSE: 'Spin echo', kGRE: 'Gradient echo', kIR: 'Inversion', etl: 'Turbo factor (echoes per TR)', esp: 'Echo spacing', tiNullCsf: 'null CSF', tiNullFat: 'null fat', ernst: 'Ernst angle (WM)',
+        acqT: 'Acquisition', matrix: 'Matrix', fovx: 'Field of view (readout)', fovy: 'Field of view (phase)', thk: 'Slice thickness', bw: 'Bandwidth', nex: 'Averages', pf: 'Partial Fourier', pfZero: 'zeros', pfConj: 'symmetry', filt: 'Filter', fNone: 'none', fHam: 'Hamming', order: 'Line order', oSeq: 'sequential', oCen: 'centric',
+        artT: 'Artefacts', motion: 'Patient motion', mNone: 'none', mBreath: 'breathing', mJump: 'moves once', amp: 'Amplitude', period: 'Period', metal: 'Metal (3 mm clip)', meNone: 'none', meTi: 'titanium', meSteel: 'stainless steel', r2p: "Inhomogeneity R2'", noise: 'Noise', on: 'on', off: 'off',
+        kTime: 'Scan time', kVox: 'Voxel', kSnr: 'Signal / noise (WM)', kFat: 'Fat shift', kTE: 'Effective TE', kEng: 'Engine', engExact: 'exact (ellipses)', engGrid: 'fine grid (metal)',
+        seqBad: 'Impossible setting: the echoes do not fit in the TR. Lengthen the TR or shorten TE, TI or the turbo factor.',
+        computing: 'computing…', line: 'line', echo: 'echo', of: 'of', simTime: 'simulated time',
+        roiCols: ['Tissue', 'T1 (ms)', 'T2 (ms)', 'PD', 'Predicted', 'Measured', 'Error', 'SNR'],
+        tis: { wm: 'White matter', gm: 'Grey matter', csf: 'Cerebrospinal fluid', fat: 'Fat', muscle: 'Muscle', blood: 'Blood', bone: 'Cortical bone', edema: 'Oedema (recent stroke)', hematoma: 'Haematoma', metal: 'Metal', air: 'Air' },
+        tisShort: { wm: 'WM', gm: 'GM', csf: 'CSF', fat: 'fat', muscle: 'muscle', blood: 'blood', bone: 'bone', edema: 'oedema', hematoma: 'haematoma', metal: 'metal', air: 'air' },
+        bCols: ['Tissue', 'Mz before the sequence', 'Signal at TE (Bloch)', 'Formula', 'Error'],
+        capTR: 'Signal vs TR', capTE: 'Signal vs TE', capTI: 'Signal vs TI (inversion)', capFlip: 'Signal vs flip angle', capNone: 'Inversion: choose the “Inversion” type',
+        ratCols: ['Contrast', 'Ratio', 'Reading'],
+        ratRows: [['wm', 'gm', 'WM / GM'], ['csf', 'wm', 'CSF / WM'], ['edema', 'wm', 'oedema / WM'], ['hematoma', 'wm', 'haematoma / WM'], ['fat', 'wm', 'fat / WM']],
+        brighter: 'brighter', darker: 'darker', same: 'about the same',
+        ctCols: ['', 'CT', 'MRI T1', 'MRI T2', 'MRI FLAIR'],
+        ctRows: { hem: 'Haematoma / brain', ede: 'Oedema / brain', bone: 'Skull bone', csf: 'Ventricles', time: 'Acquisition time', xray: 'X-rays' },
+        yes: 'yes', no: 'no', bright: 'white', dark: 'black', s: 's',
+        chkCols: ['Check', 'Expected', 'Measured', ''],
+        chk: { se: 'Bloch = formula, spin echo (8 tissues)', ir: 'Bloch = formula, inversion recovery', gre: 'Bloch = formula, gradient echo', ti: 'TI that nulls CSF: formula = Bloch', fft: 'FFT = direct transform (N = 256)', ell: 'Ellipse transform = numerical integration', roi: 'Phantom tubes: measured = Bloch (T1 spin echo)', gibbs: 'Gibbs at the edge of a disc (256²)', fat: 'Fat shift in readout', noise: 'Measured noise = predicted noise', alias: 'Phase wrap (object at y = 90 mm, 120 mm field)', ghost: 'Breathing ghosts (4 s period)', grid: 'Fine grid = exact engine (no metal)', metal: 'Metal: hole larger in gradient echo than spin echo' },
+        ok: 'ok', fail: 'off',
+      },
+    };
+    const t = (k) => (T[lang][k] !== undefined ? T[lang][k] : T.fr[k]);
+    const fmt = (v, d) => (isFinite(v) ? v.toFixed(d) : '—').replace('.', lang === 'fr' ? ',' : '.');
+    const fmtTime = (s) => { const m = Math.floor(s / 60), r = Math.round(s - m * 60); return m ? m + ' min ' + String(r).padStart(2, '0') + ' s' : fmt(s, s < 10 ? 1 : 0) + ' s'; };
+    const COLORS = { wm: '#f2f2f2', gm: '#9b9b9f', csf: '#4fb3a9', fat: '#e0a458', muscle: '#b07a6a', blood: '#a33a4a', bone: '#55555a', edema: '#8fd18f', hematoma: '#c8102e', metal: '#ffffff', air: '#000000' };
+    const PRESET_LABELS = { t1: 'T1', t1ir: 'T1 inv.', pd: 'DP', t2: 'T2', flair: 'FLAIR', stir: 'STIR', gre: 'T2*', inphase: { fr: 'en phase', en: 'in phase' }, opposed: { fr: 'opposition', en: 'opposed' } };
+
+    // ------------------------------------------------------------------ état
+    const S = {
+      view: 'image', ph: 'brain', preset: 't2', seq: Object.assign({}, I.PRESETS.t2),
+      acq: { N: 256, fovx: 240, fovy: 240, bw: 130, thk: 5, nex: 1, pf: 1, pfMode: 'zero', filter: 'none', r2p: 10, motion: { type: 'none', amp: 3, period: 4 }, metal: null, order: 'seq', noise: true, seed: 7 },
+      bTis: 'wm', bSpeed: 1,
+    };
+    const fullAcq = () => Object.assign({}, S.acq, { motion: Object.assign({}, S.acq.motion) });
+
+    // ------------------------------------------------------------------ calcul en arrière-plan (Web Worker), repli synchrone
+    function job(d) {
+      const I = self.IRM;
+      const pack = (a) => Float64Array.from(a);
+      if (d.type === 'image') {
+        const ph = I.PHANTOMS[d.ph], K = I.acquire(ph, d.seq, d.acq), img = I.reconstruct(K), mag = I.magnitude(img);
+        let sd = 0;
+        if (K.sigma) { const cl = I.reconstruct(K, 'clean'); const diff = img.re.map((v, i) => v - cl.re[i]); sd = I.stats(diff).sd; }
+        const ells = I.withMetal(ph, !!d.acq.metal), best = {};
+        const clean = K.sigma ? I.magnitude(I.reconstruct(K, 'clean')) : mag;
+        ells.forEach((e, i) => {
+          if (e.t === 'metal' || e.t === 'bone') return;
+          const mask = I.roiMask(ells, img, i, Math.max(2.5, 1.6 * Math.max(img.dx, img.dy)));
+          const st = I.stats(mag, mask), stc = I.stats(clean, mask);
+          if (st.n >= 4 && (!best[e.t] || st.n > best[e.t].n)) best[e.t] = { t: e.t, n: st.n, mean: st.mean, clean: stc.mean, th: I.theory(e.t, d.seq, d.acq) };
+        });
+        return { type: 'image', mag, kre: pack(K.re), kim: pack(K.im), lines: K.plan.lines, echo: Array.from(K.plan.echo), time: Array.from(K.plan.time), tAcq: K.plan.tAcq, sigma: K.sigma, sd, engine: K.engine, rois: Object.values(best), N: K.N, Nro: K.Nro };
+      }
+      if (d.type === 'ct') {
+        const Sc = self.Scanner, ph = I.PHANTOMS.brain, ells = ph.ellipses;
+        const ctPh = { fov: ph.fov / 10, units: 'hu', ellipses: ells.map((e) => [e.x / 10, e.y / 10, e.a / 10, e.b / 10, e.ang, Sc.hu2mu(I.TISSUES[e.t].hu) - (e.p === null ? 0 : Sc.hu2mu(I.TISSUES[ells[e.p].t].hu))]) };
+        const acq = Sc.acquire(ctPh, { nA: 360, nD: 256, range: 180, I0: 4e5, seed: 3 }), mu = Sc.fbp(acq, 256, 'hann'), hu = mu.map(Sc.mu2hu);
+        const out = { type: 'ct', hu: pack(hu), mri: {} };
+        const roi = (imgObj, arr, region) => I.stats(arr, I.roiMask(ells, imgObj, region, 3)).mean;
+        const ctImg = { N: 256, dx: ph.fov / 256, dy: ph.fov / 256 };
+        out.ctStats = { wm: roi(ctImg, hu, 6), hem: roi(ctImg, hu, 12), ede: roi(ctImg, hu, 11), csf: roi(ctImg, hu, 7), bone: I.stats(hu, I.roiMask(ells, ctImg, 1, 0.6)).mean };
+        for (const p of ['t1', 't2', 'flair']) {
+          const acqM = { N: 256, fovx: 240, fovy: 240, noise: true }, K = I.acquire(ph, I.PRESETS[p], acqM), img = I.reconstruct(K), m = I.magnitude(img);
+          out.mri[p] = { mag: m, wm: roi(img, m, 6), hem: roi(img, m, 12), ede: roi(img, m, 11), csf: roi(img, m, 7), bone: I.stats(m, I.roiMask(ells, img, 1, 0.5)).mean, time: I.scanTime(I.PRESETS[p], { N: 256 }) };
+        }
+        return out;
+      }
+      if (d.type === 'checks') {
+        const res = [], TS = I.TISSUES, ids = ['wm', 'gm', 'csf', 'fat', 'muscle', 'blood', 'edema', 'hematoma'];
+        let e1 = 0, e2 = 0, e3 = 0;
+        ids.forEach((id) => {
+          e1 = Math.max(e1, Math.abs(I.steadyState(id, { kind: 'SE', TR: 600, TE: 20, ETL: 1 }).echoes[0] - I.formula.se(TS[id], 600, 20)));
+          e2 = Math.max(e2, Math.abs(I.steadyState(id, { kind: 'IR', TR: 6000, TE: 30, TI: 700, ETL: 1 }).echoes[0] - I.formula.ir(TS[id], 6000, 700, 30)));
+          e3 = Math.max(e3, Math.abs(I.steadyState(id, { kind: 'GRE', TR: 40, TE: 8, flip: 25 }).echoes[0] - I.formula.gre(TS[id], 40, 8, 25)));
+        });
+        res.push(['se', '0', e1.toExponential(1), e1 < 1e-9], ['ir', '0', e2.toExponential(1), e2 < 1e-9], ['gre', '0', e3.toExponential(1), e3 < 1e-9]);
+        const a = I.formula.tiNull(TS.csf, 9000, 120), b = I.tiNullBloch('csf', { kind: 'IR', TR: 9000, TE: 120, ETL: 1 });
+        res.push(['ti', fmtNum(a, 2) + ' ms', fmtNum(b, 2) + ' ms', Math.abs(a - b) < 1e-6]);
+        { const N = 256, R = I.rng(5), re = Float64Array.from({ length: N }, () => R() - 0.5), im = Float64Array.from({ length: N }, () => R() - 0.5), [Dr, Di] = I.dft(re, im, false); I.fft(re, im, false); let e = 0; for (let k = 0; k < N; k++) e = Math.max(e, Math.hypot(re[k] - Dr[k], im[k] - Di[k])); res.push(['fft', '0', e.toExponential(1), e < 1e-9]); }
+        { const el = { x: 12, y: -7, a: 20, b: 11, ang: 33 }, h = 0.1, kx = 0.02, ky = 0.015; let sr = 0, si = 0; for (let x = -10; x <= 34; x += h) for (let y = -29; y <= 15; y += h) if (I.inEllipse(el, x + h / 2, y + h / 2)) { const p = -2 * Math.PI * (kx * (x + h / 2) + ky * (y + h / 2)); sr += Math.cos(p) * h * h; si += Math.sin(p) * h * h; } const [fr, fi] = I.ellipseFT(el, kx, ky); const e = Math.hypot(fr - sr, fi - si) / (Math.PI * el.a * el.b); res.push(['ell', '< ' + fmtNum(0.2, 1) + ' %', fmtNum(e * 100, 3) + ' %', e < 2e-3]); }
+        { const qa = I.PHANTOMS.qa, seq = I.PRESETS.t1, acq = { N: 128, fovx: 200, fovy: 200, noise: false }, img = I.reconstruct(I.acquire(qa, seq, acq)), m = I.magnitude(img); let worst = 0; I.QA_ORDER.forEach((id, i) => { if (id === 'bone') return; const mean = I.stats(m, I.roiMask(qa.ellipses, img, i, 6)).mean, th = I.theory(id, seq, acq); worst = Math.max(worst, Math.abs(mean / th - 1)); }); res.push(['roi', '< 2 %', fmtNum(worst * 100, 2) + ' %', worst < 0.02]); }
+        { const ph = { fov: 240, extent: 62, metalAt: null, ellipses: [{ x: 0, y: 0, a: 60, b: 60, ang: 0, t: 'wm', p: null }] }, seq = I.PRESETS.t1, acq = { N: 256, r2p: 0, noise: false }, m = I.magnitude(I.reconstruct(I.acquire(ph, seq, acq))); let mx = 0; for (let j = 0; j < 256; j++) mx = Math.max(mx, m[128 * 256 + j]); const ov = (mx / I.theory('wm', seq, acq) - 1) * 100; res.push(['gibbs', '≈ 9 %', fmtNum(ov, 2) + ' %', ov > 8.5 && ov < 9.5]); }
+        { const qa = I.PHANTOMS.qa, bw = d.bw, seq = { kind: 'SE', TR: 500, TE: 15, ETL: 1 }, acq = { N: 128, fovx: 200, fovy: 200, bw, r2p: 0, noise: false }, img = I.reconstruct(I.acquire(qa, seq, acq)), m = I.magnitude(img);
+          const cen = (cx, cy) => { let sx = 0, s = 0; for (let row = 0; row < 128; row++) for (let j = 0; j < 128; j++) { const [x, y] = I.pixelXY(img, row, j); if (Math.abs(x - cx) < 31 && Math.abs(y - cy) < 31) { sx += m[row * 128 + j] * j; s += m[row * 128 + j]; } } return sx / s; };
+          const sh = cen(-52, 0) - cen(-52, 52), pr = -I.fatHz() / bw; res.push(['fat', fmtNum(pr, 2) + ' px (' + bw + ' Hz/px)', fmtNum(sh, 2) + ' px', Math.abs(sh - pr) < 0.12]); }
+        { const qa = I.PHANTOMS.qa, K = I.acquire(qa, I.PRESETS.t1, { N: 128, fovx: 200, fovy: 200 }), a2 = I.reconstruct(K), b2 = I.reconstruct(K, 'clean'), sd = I.stats(a2.re.map((v, i) => v - b2.re[i])).sd; res.push(['noise', K.sigma.toExponential(3), sd.toExponential(3), Math.abs(sd / K.sigma - 1) < 0.03]); }
+        { const ph = { fov: 240, extent: 100, metalAt: null, ellipses: [{ x: 0, y: 90, a: 8, b: 8, ang: 0, t: 'wm', p: null }] }, img = I.reconstruct(I.acquire(ph, I.PRESETS.t1, { N: 128, fovx: 240, fovy: 120, noise: false })), m = I.magnitude(img); let s = 0, sy = 0; for (let i = 0; i < m.length; i++) { s += m[i]; sy += m[i] * I.pixelXY(img, Math.floor(i / 128), 0)[1]; } res.push(['alias', 'y = −30 mm', 'y = ' + fmtNum(sy / s, 1) + ' mm', Math.abs(sy / s + 30) < 1.5]); }
+        { const ph = { fov: 240, extent: 8, metalAt: null, ellipses: [{ x: 0, y: 0, a: 5, b: 5, ang: 0, t: 'wm', p: null }] }, N = 128, m = I.magnitude(I.reconstruct(I.acquire(ph, I.PRESETS.t1, { N, noise: false, motion: { type: 'breath', amp: 1.5, period: 4 } }))); const pr = Array.from({ length: N }, (_, row) => m[row * N + N / 2]); let best = -1, bv = -1; for (let row = 3; row < N - 3; row++) { const y = (N / 2 - 1 - row) * (240 / N); if (Math.abs(y) <= 12) continue; let sm = 0; for (let q = -3; q <= 3; q++) sm += pr[row + q]; if (sm > bv) { bv = sm; best = row; } } const dpx = Math.abs(best - (N / 2 - 1)), g = (N * 500) / 4000; res.push(['ghost', g + ' px (N·TR/période)', dpx + ' px', Math.abs(dpx - g) <= 3]); }
+        { const br = I.PHANTOMS.brain, seq = I.PRESETS.t1, acq = { N: 128, r2p: 0, noise: false }, a3 = I.magnitude(I.reconstruct(I.acquire(br, seq, acq))), b3 = I.magnitude(I.reconstruct(I.acquire(br, seq, acq, { grid: true }))); let n2 = 0, d2 = 0; for (let i = 0; i < a3.length; i++) { n2 += (a3[i] - b3[i]) ** 2; d2 += a3[i] ** 2; } const r = Math.sqrt(n2 / d2) * 100; res.push(['grid', '< 6 %', fmtNum(r, 1) + ' %', r < 6]); }
+        { const br = I.PHANTOMS.brain, c = I.METAL_CLIP; const area = (p) => { const r = I.reconstruct(I.acquire(br, I.PRESETS[p], { N: 128, metal: 'ti', noise: false })), m = I.magnitude(r), ref = I.magnitude(I.reconstruct(I.acquire(br, I.PRESETS[p], { N: 128, noise: false }, { grid: true }))); let k = 0; for (let i = 0; i < m.length; i++) { const [x, y] = I.pixelXY(r, Math.floor(i / 128), i % 128); if (Math.hypot(x - c.x, y - c.y) < 25 && m[i] < 0.4 * ref[i]) k++; } return k; }; const se = area('t1'), gr = area('gre'); res.push(['metal', 'GRE > SE', gr + ' px > ' + se + ' px', gr > se]); }
+        return { type: 'checks', res };
+        function fmtNum(v, dd) { return v.toFixed(dd).replace('.', d.lang === 'fr' ? ',' : '.'); }
+      }
+      return null;
+    }
+    let worker = null, jobId = 0;
+    const pending = new Map();
+    try {
+      const base = new URL('.', location.href).href;
+      const src = "importScripts('" + base + "irm.js', '" + base + "scanner.js');\nconst job = " + job.toString() + ";\nonmessage = (e) => { const r = job(e.data.d); const tr = []; if (r && r.mag) tr.push(r.mag.buffer); if (r && r.kre) tr.push(r.kre.buffer, r.kim.buffer); postMessage({ id: e.data.id, r }, tr); };";
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      worker.onmessage = (e) => { const cb = pending.get(e.data.id); pending.delete(e.data.id); if (cb) cb(e.data.r); };
+      worker.onerror = () => { worker = null; };
+    } catch (e) { worker = null; }
+    function run(d, cb) {
+      if (worker) { const id = ++jobId; pending.set(id, cb); worker.postMessage({ id, d }); return id; }
+      setTimeout(() => cb(job(d)), 10); return 0;
+    }
+
+    // ------------------------------------------------------------------ commandes
+    function seg(box, list, cur, onPick) {
+      const s = document.createElement('div'); s.className = 'seg';
+      list.forEach(([v, label]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = label; b.setAttribute('aria-pressed', String(v) === String(cur)); b.addEventListener('click', () => onPick(v)); s.appendChild(b); });
+      box.appendChild(s); return s;
+    }
+    function lbl(box, text) { const p = document.createElement('p'); p.className = 'lbl'; p.textContent = text; box.appendChild(p); }
+    function h3(box, text) { const h = document.createElement('h3'); h.textContent = text; box.appendChild(h); }
+    function slider(box, label, val, min, max, step, show, onInput, extra) {
+      const d = document.createElement('div'); d.className = 'ctl';
+      const id = 'r' + Math.random().toString(36).slice(2, 8);
+      d.innerHTML = '<label for="' + id + '">' + label + '</label><output></output><input type="range" id="' + id + '" min="' + min + '" max="' + max + '" step="' + step + '">';
+      const inp = d.querySelector('input'), out = d.querySelector('output'); inp.value = val; out.textContent = show(+inp.value);
+      inp.addEventListener('input', () => { out.textContent = show(+inp.value); onInput(+inp.value, false); });
+      inp.addEventListener('change', () => onInput(+inp.value, true));
+      if (extra) { const sub = document.createElement('div'); sub.className = 'sub'; extra.forEach(([txt, fn]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = txt; b.addEventListener('click', fn); sub.appendChild(b); }); d.appendChild(sub); }
+      box.appendChild(d); return d;
+    }
+    // TR : curseur logarithmique
+    const logS = (min, max) => ({ to: (v) => Math.log(v / min) / Math.log(max / min), from: (u) => min * Math.pow(max / min, u) });
+    const TRs = logS(5, 12000), TEs = logS(1, 300), TIs = logS(10, 4000);
+    const roundTR = (v) => (v < 20 ? Math.round(v * 10) / 10 : v < 200 ? Math.round(v) : Math.round(v / 10) * 10);
+    function changed(final) { if (final) { schedule(); } }
+    function renderCtl() {
+      const box = $('ctl'); box.innerHTML = '';
+      const sq = S.seq, a = S.acq;
+      lbl(box, t('phT')); seg(box, [['brain', t('phBrain')], ['qa', t('phQa')]], S.ph, (v) => { S.ph = v; S.acq.fovx = S.acq.fovy = I.PHANTOMS[v].fov; renderCtl(); schedule(); });
+      lbl(box, t('preT'));
+      seg(box, Object.keys(PRESET_LABELS).map((k) => [k, typeof PRESET_LABELS[k] === 'string' ? PRESET_LABELS[k] : PRESET_LABELS[k][lang]]), S.preset, (v) => { S.preset = v; S.seq = Object.assign({}, I.PRESETS[v]); renderCtl(); schedule(); });
+      lbl(box, t('kindT'));
+      seg(box, [['SE', t('kSE')], ['GRE', t('kGRE')], ['IR', t('kIR')]], sq.kind, (v) => { S.seq.kind = v; S.preset = null; if (v === 'GRE') { S.seq.ETL = 1; if (S.seq.TE > 40) S.seq.TE = 10; } if (v === 'IR' && !S.seq.TI) S.seq.TI = 700; renderCtl(); schedule(); });
+      const free = () => { S.preset = null; box.querySelectorAll('.seg')[1].querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); };
+      slider(box, 'TR', TRs.to(sq.TR), 0, 1, 0.001, (u) => fmt(roundTR(TRs.from(u)), roundTR(TRs.from(u)) < 20 ? 1 : 0) + ' ms', (u, fin) => { S.seq.TR = roundTR(TRs.from(u)); free(); changed(fin); });
+      const etl = Math.max(1, sq.ETL | 0);
+      if (sq.kind !== 'GRE' && etl > 1) {
+        slider(box, 'TE ' + (lang === 'fr' ? 'effectif' : 'effective'), Math.max(1, Math.round(sq.TE / sq.ESP)), 1, etl, 1, (v) => fmt(v * sq.ESP, 0) + ' ms', (v, fin) => { S.seq.TE = v * S.seq.ESP; free(); changed(fin); });
+      } else {
+        slider(box, 'TE', TEs.to(sq.TE), 0, 1, 0.001, (u) => fmt(TEs.from(u), TEs.from(u) < 10 ? 2 : 0) + ' ms', (u, fin) => { const v = TEs.from(u); S.seq.TE = v < 10 ? Math.round(v * 100) / 100 : Math.round(v); free(); changed(fin); });
+      }
+      if (sq.kind === 'IR') slider(box, 'TI', TIs.to(sq.TI), 0, 1, 0.001, (u) => fmt(TIs.from(u), 0) + ' ms', (u, fin) => { S.seq.TI = Math.round(TIs.from(u)); free(); changed(fin); },
+        [[t('tiNullCsf'), () => { const v = I.tiNullBloch('csf', S.seq); if (v) { S.seq.TI = Math.round(v); free(); renderCtl(); schedule(); } }], [t('tiNullFat'), () => { const v = I.tiNullBloch('fat', S.seq); if (v) { S.seq.TI = Math.round(v); free(); renderCtl(); schedule(); } }]]);
+      if (sq.kind === 'GRE') slider(box, lang === 'fr' ? 'Angle de bascule' : 'Flip angle', sq.flip, 1, 90, 1, (v) => v + '°', (v, fin) => { S.seq.flip = v; free(); changed(fin); }, [[t('ernst'), () => { S.seq.flip = Math.round(I.formula.ernst(I.TISSUES.wm, S.seq.TR)); free(); renderCtl(); schedule(); }]]);
+      if (sq.kind !== 'GRE') {
+        lbl(box, t('etl'));
+        seg(box, [[1, '1'], [2, '2'], [4, '4'], [8, '8'], [16, '16'], [32, '32']], etl, (v) => { const te = S.seq.TE; S.seq.ETL = v; if (v > 1) S.seq.TE = Math.max(1, Math.min(v, Math.round(te / S.seq.ESP))) * S.seq.ESP; free(); renderCtl(); schedule(); });
+        if (etl > 1) slider(box, t('esp'), sq.ESP, 4, 20, 1, (v) => v + ' ms', (v, fin) => { const k = Math.round(S.seq.TE / S.seq.ESP); S.seq.ESP = v; S.seq.TE = k * v; free(); if (fin) { renderCtl(); schedule(); } });
+      }
+      h3(box, t('acqT'));
+      lbl(box, t('matrix')); seg(box, [[64, '64²'], [128, '128²'], [256, '256²']], a.N, (v) => { S.acq.N = v; renderCtl(); schedule(); });
+      slider(box, t('fovx'), a.fovx, 120, 300, 10, (v) => v + ' mm', (v, fin) => { S.acq.fovx = v; changed(fin); });
+      slider(box, t('fovy'), a.fovy, 100, 300, 10, (v) => v + ' mm', (v, fin) => { S.acq.fovy = v; changed(fin); });
+      slider(box, t('thk'), a.thk, 1, 10, 0.5, (v) => fmt(v, 1) + ' mm', (v, fin) => { S.acq.thk = v; changed(fin); });
+      slider(box, t('bw'), a.bw, 20, 600, 10, (v) => v + ' Hz/px', (v, fin) => { S.acq.bw = v; changed(fin); });
+      slider(box, t('nex'), a.nex, 1, 8, 1, (v) => String(v), (v, fin) => { S.acq.nex = v; changed(fin); });
+      lbl(box, t('pf')); seg(box, [[1, '1'], [0.875, '7/8'], [0.75, '6/8'], [0.625, '5/8']], a.pf, (v) => { S.acq.pf = v; renderCtl(); schedule(); });
+      if (a.pf < 1) seg(box, [['zero', t('pfZero')], ['conj', t('pfConj')]], a.pfMode, (v) => { S.acq.pfMode = v; renderCtl(); schedule(); });
+      lbl(box, t('filt')); seg(box, [['none', t('fNone')], ['hamming', t('fHam')]], a.filter, (v) => { S.acq.filter = v; renderCtl(); schedule(); });
+      lbl(box, t('order')); seg(box, [['seq', t('oSeq')], ['centric', t('oCen')]], a.order, (v) => { S.acq.order = v; renderCtl(); schedule(); });
+      h3(box, t('artT'));
+      lbl(box, t('motion')); seg(box, [['none', t('mNone')], ['breath', t('mBreath')], ['jump', t('mJump')]], a.motion.type, (v) => { S.acq.motion.type = v; renderCtl(); schedule(); });
+      if (a.motion.type !== 'none') {
+        slider(box, t('amp'), a.motion.amp, 0.5, 10, 0.5, (v) => fmt(v, 1) + ' mm', (v, fin) => { S.acq.motion.amp = v; changed(fin); });
+        if (a.motion.type === 'breath') slider(box, t('period'), a.motion.period, 1, 10, 0.5, (v) => fmt(v, 1) + ' s', (v, fin) => { S.acq.motion.period = v; changed(fin); });
+      }
+      if (S.ph === 'brain') { lbl(box, t('metal')); seg(box, [['', t('meNone')], ['ti', t('meTi')], ['steel', t('meSteel')]], a.metal || '', (v) => { S.acq.metal = v || null; renderCtl(); schedule(); }); }
+      slider(box, t('r2p'), a.r2p, 0, 60, 1, (v) => v + ' s⁻¹', (v, fin) => { S.acq.r2p = v; changed(fin); });
+      lbl(box, t('noise')); seg(box, [[1, t('on')], [0, t('off')]], a.noise ? 1 : 0, (v) => { S.acq.noise = !!v; renderCtl(); schedule(); });
+    }
+
+    // ------------------------------------------------------------------ dessin d'images
+    function paintGray(cv, arr, N, lo, hi) {
+      if (cv.width !== N) { cv.width = N; cv.height = N; }
+      const c = cv.getContext('2d'), im = c.createImageData(N, N);
+      for (let i = 0; i < N * N; i++) { const v = Math.max(0, Math.min(255, Math.round(((arr[i] - lo) / (hi - lo)) * 255))); im.data[4 * i] = im.data[4 * i + 1] = im.data[4 * i + 2] = v; im.data[4 * i + 3] = 255; }
+      c.putImageData(im, 0, 0);
+    }
+    function pct(arr, q) { const s = Float64Array.from(arr).sort(); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; }
+    function paintTruth() {
+      const cv = $('cvTruth'), N = 256, c = cv.getContext('2d'), im = c.createImageData(N, N), ph = I.PHANTOMS[S.ph], ells = I.withMetal(ph, !!S.acq.metal);
+      if (cv.width !== N) { cv.width = N; cv.height = N; }
+      const fx = S.acq.fovx, fy = S.acq.fovy;
+      for (let r = 0; r < N; r++) for (let j = 0; j < N; j++) {
+        const x = (j + 0.5 - N / 2) * (fx / N), y = (N / 2 - r - 0.5) * (fy / N), col = COLORS[I.tissueAt(ells, x, y)], i = r * N + j;
+        im.data[4 * i] = parseInt(col.slice(1, 3), 16); im.data[4 * i + 1] = parseInt(col.slice(3, 5), 16); im.data[4 * i + 2] = parseInt(col.slice(5, 7), 16); im.data[4 * i + 3] = 255;
+      }
+      c.putImageData(im, 0, 0);
+    }
+    function paintK(cv, re, im, Nro, N, upto, maxRef) {
+      if (cv.width !== Nro) { cv.width = Nro; cv.height = N; }
+      const c = cv.getContext('2d'), d = c.createImageData(Nro, N), ref = maxRef * 1e-4;
+      for (let m = 0; m < N; m++) for (let n = 0; n < Nro; n++) {
+        const i = m * Nro + n, row = N - 1 - m, o = 4 * (row * Nro + n);
+        const v = upto && !upto[m] ? 0 : Math.log(1 + Math.hypot(re[i], im[i]) / ref) / Math.log(1 + 1e4);
+        const g = Math.max(0, Math.min(255, Math.round(v * 255)));
+        d.data[o] = g; d.data[o + 1] = g; d.data[o + 2] = g; d.data[o + 3] = 255;
+      }
+      c.putImageData(d, 0, 0);
+    }
+
+    // ------------------------------------------------------------------ onglet image
+    let R = null, timer = null, reqId = 0, anim = null;
+    function schedule() { clearTimeout(timer); timer = setTimeout(computeImage, 60); if (S.view !== 'image') refreshView(); }
+    function computeImage() {
+      stopAnim();
+      paintTruth();
+      if (!I.seqValid(S.seq)) { $('seqWarn').hidden = false; $('seqWarn').textContent = t('seqBad'); kpis(); return; }
+      $('seqWarn').hidden = true;
+      $('busy').textContent = t('computing');
+      const my = ++reqId;
+      run({ type: 'image', ph: S.ph, seq: Object.assign({}, S.seq), acq: fullAcq() }, (r) => {
+        if (my !== reqId) return;
+        $('busy').textContent = '';
+        R = r; R.seq = Object.assign({}, S.seq); R.acq = fullAcq();
+        let mx = 0; for (let i = 0; i < r.kre.length; i++) mx = Math.max(mx, Math.hypot(r.kre[i], r.kim[i])); R.kmax = mx;
+        R.hi = pct(r.mag, 0.997) || 1;
+        paintGray($('cvImg'), r.mag, r.N, 0, R.hi); paintK($('cvK'), r.kre, r.kim, r.Nro, r.N, null, mx);
+        kpis(); roiTable(); $('animInfo').textContent = '';
+        if (S.view === 'bloch' || S.view === 'contrast') refreshView();
+      });
+      kpis();
+    }
+    function kpis() {
+      const sq = S.seq, a = S.acq, kpi = (k, v, u, main) => '<div class="kpi' + (main ? ' main' : '') + '"><dt>' + k + '</dt><dd>' + v + (u ? '<small>' + u + '</small>' : '') + '</dd></div>';
+      const valid = I.seqValid(sq), time = valid ? I.scanTime(sq, a) : NaN;
+      let snr = '—';
+      if (R && R.rois && R.sd) { const w = R.rois.find((x) => x.t === 'wm') || R.rois[0]; if (w) snr = fmt(w.clean / R.sd, 0); }
+      else if (R && !R.sd) snr = '∞';
+      const sh = Math.abs(I.fatHz()) / a.bw, te = I.echoTimes(sq)[I.effEcho(sq)];
+      $('kpis').innerHTML = kpi(t('kTime'), valid ? fmtTime(time) : '—', '', true) + kpi(t('kVox'), fmt(a.fovx / a.N, 1) + '×' + fmt(a.fovy / a.N, 1) + '×' + fmt(a.thk, 1), 'mm') + kpi(t('kSnr'), snr, '') +
+        kpi(t('kFat'), fmt(sh, 2), 'px · ' + fmt((sh * a.fovx) / a.N, 1) + ' mm') + kpi(t('kTE'), fmt(te, te < 10 ? 2 : 0), 'ms') + kpi(t('kEng'), R ? (R.engine === 'grille' ? t('engGrid') : t('engExact')) : '—', '');
+    }
+    function roiTable() {
+      if (!R) return;
+      const cols = t('roiCols'), order = ['wm', 'gm', 'csf', 'fat', 'muscle', 'blood', 'edema', 'hematoma'];
+      const rows = R.rois.slice().sort((x, y) => order.indexOf(x.t) - order.indexOf(y.t)).map((r) => {
+        const T1 = I.TISSUES[r.t], err = r.th > 1e-3 ? (r.clean / r.th - 1) * 100 : NaN;
+        return '<tr><td><span class="sw" style="background:' + COLORS[r.t] + '"></span>' + t('tis')[r.t] + '</td><td class="n">' + T1.T1 + '</td><td class="n">' + T1.T2 + '</td><td class="n">' + fmt(T1.PD, 2) + '</td><td class="n">' + fmt(r.th, 3) + '</td><td class="n">' + fmt(r.mean, 3) + '</td><td class="n ' + (Math.abs(err) < 5 ? 'good' : '') + '">' + (isFinite(err) ? (err > 0 ? '+' : '') + fmt(err, 1) + ' %' : '—') + '</td><td class="n">' + (R.sd ? fmt(r.clean / R.sd, 0) : '∞') + '</td></tr>';
+      });
+      $('roi').innerHTML = '<thead><tr>' + cols.map((c, i) => '<th' + (i ? ' class="n"' : '') + '>' + c + '</th>').join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody>';
+    }
+    // lecture au survol
+    $('cvImg').addEventListener('pointermove', (e) => {
+      if (!R) return;
+      const r = e.target.getBoundingClientRect(), N = R.N, j = Math.min(N - 1, Math.floor(((e.clientX - r.left) / r.width) * N)), row = Math.min(N - 1, Math.floor(((e.clientY - r.top) / r.height) * N));
+      const x = (j - N / 2) * (R.acq.fovx / N), y = (N / 2 - 1 - row) * (R.acq.fovy / N), tis = I.tissueAt(I.withMetal(I.PHANTOMS[S.ph], !!R.acq.metal), x, y);
+      $('readout').textContent = 'x = ' + fmt(x, 1) + ' mm · y = ' + fmt(y, 1) + ' mm · ' + t('tis')[tis] + ' · ' + (lang === 'fr' ? 'valeur' : 'value') + ' ' + fmt(R.mag[row * N + j], 3);
+    });
+    // animation de l'acquisition : les lignes arrivent dans l'ordre réel
+    function stopAnim() { if (anim) cancelAnimationFrame(anim.raf); anim = null; $('play').textContent = t('play'); }
+    $('play').addEventListener('click', () => {
+      if (anim) { stopAnim(); if (R) { paintGray($('cvImg'), R.mag, R.N, 0, R.hi); paintK($('cvK'), R.kre, R.kim, R.Nro, R.N, null, R.kmax); } $('animInfo').textContent = ''; return; }
+      if (!R) return;
+      const order = R.lines.slice().sort((a, b) => R.time[a] - R.time[b]), N = R.N, Nro = R.Nro, dur = 7000, start = performance.now();
+      const filled = new Uint8Array(N), re = new Float64Array(R.kre.length), im = new Float64Array(R.kim.length), acq = Object.assign({}, R.acq, { pf: 1 });
+      let k = 0, lastRec = 0;
+      $('play').textContent = t('stop');
+      anim = {};
+      const step = (now) => {
+        const target = Math.min(order.length, Math.floor(((now - start) / dur) * order.length) + 1);
+        while (k < target) { const m = order[k++]; filled[m] = 1; for (let n = 0; n < Nro; n++) { re[m * Nro + n] = R.kre[m * Nro + n]; im[m * Nro + n] = R.kim[m * Nro + n]; } }
+        paintK($('cvK'), re, im, Nro, N, filled, R.kmax);
+        if (now - lastRec > (N > 128 ? 120 : 50) || k === order.length) {
+          lastRec = now;
+          const img = I.reconstruct({ re, im, Nro, N, plan: { lines: order.slice(0, k) }, acq });
+          paintGray($('cvImg'), I.magnitude(img), N, 0, R.hi);
+        }
+        const m = order[k - 1], tsec = (R.time[m] + 0) / 1000;
+        $('animInfo').textContent = t('line') + ' ' + k + ' ' + t('of') + ' ' + order.length + ' · ky = ' + (m - N / 2) + (R.seq.ETL > 1 ? ' · ' + t('echo') + ' ' + (R.echo[m] + 1) : '') + ' · ' + t('simTime') + ' ' + fmtTime(tsec);
+        if (k < order.length) anim.raf = requestAnimationFrame(step); else { anim = null; $('play').textContent = t('play'); }
+      };
+      anim.raf = requestAnimationFrame(step);
+    });
+
+    // ------------------------------------------------------------------ onglet aimantation
+    let B = null, bPlaying = true, bT = 0, bLast = null;
+    function setupCv(cv) { const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight; if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); } const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); return { c, w, h }; }
+    function blochWindow(seq) { const ev = I.events(seq), last = ev[ev.length - 1].t; return Math.min(seq.TR, last * 1.25 + 8); }
+    function prepBloch() {
+      if (!I.seqValid(S.seq)) { B = null; return; }
+      const tmax = blochWindow(S.seq);
+      B = { tis: S.bTis, seq: Object.assign({}, S.seq), tmax, en: I.ensemble(S.bTis, S.seq, { n: 300, show: 12, samples: 900, r2p: S.acq.r2p, tmax }) };
+      // courbes sur tout le TR pour plusieurs tissus
+      const list = ['wm', 'csf', 'fat', S.bTis].filter((v, i, a) => a.indexOf(v) === i);
+      B.full = list.map((id) => ({ id, en: I.ensemble(id, S.seq, { n: 200, show: 1, samples: 700, r2p: S.acq.r2p }) }));
+      bT = 0;
+      drawTR(); blochTable();
+      $('lgTis').innerHTML = B.full.map((f) => '<span><i style="background:' + COLORS[f.id] + '"></i>' + t('tisShort')[f.id] + '</span>').join(' ');
+    }
+    function proj(x, y, z, cx, cy, Rr) { const a = Math.PI / 6; return [cx + (x - y) * Math.cos(a) * Rr, cy - z * Rr + (x + y) * Math.sin(a) * Rr * 0.55]; }
+    function draw3d() {
+      const { c, w, h } = setupCv($('cv3d')); c.fillStyle = '#0a0a0b'; c.fillRect(0, 0, w, h);
+      if (!B) return;
+      const en = B.en, i = Math.max(0, Math.min(en.times.length - 1, en.times.findIndex((tt) => tt >= bT))), M0 = I.TISSUES[B.tis].PD || 1;
+      const cx = w / 2, cy = h * 0.56, Rr = Math.min(w, h) * 0.36;
+      // repère
+      c.strokeStyle = '#26262a'; c.lineWidth = 1; c.beginPath();
+      for (let k = 0; k <= 64; k++) { const a = (k / 64) * 2 * Math.PI, [px, py] = proj(Math.cos(a), Math.sin(a), 0, cx, cy, Rr); k ? c.lineTo(px, py) : c.moveTo(px, py); } c.stroke();
+      [[1, 0, 0, "x'"], [0, 1, 0, "y'"], [0, 0, 1, 'z · B0']].forEach(([x, y, z, l]) => { const [a1, b1] = proj(-x * 0.2, -y * 0.2, 0, cx, cy, Rr), [a2, b2] = proj(x * 1.15, y * 1.15, z * 1.15, cx, cy, Rr); c.strokeStyle = '#3a3a3d'; c.beginPath(); c.moveTo(z ? cx : a1, z ? cy : b1); c.lineTo(a2, b2); c.stroke(); c.fillStyle = '#6c6c70'; c.font = '10px "JetBrains Mono", monospace'; c.fillText(l, a2 + 4, b2 - 2); });
+      // isochromats
+      c.lineWidth = 1.2;
+      en.some[i].forEach((s) => { const [px, py] = proj(s[0] / M0, s[1] / M0, s[2] / M0, cx, cy, Rr); c.strokeStyle = 'rgba(201,201,204,0.45)'; c.beginPath(); c.moveTo(cx, cy); c.lineTo(px, py); c.stroke(); });
+      // traînée de la somme
+      c.strokeStyle = 'rgba(200,16,46,0.35)'; c.beginPath();
+      for (let k = Math.max(0, i - 120); k <= i; k++) { const m = en.mean[k], [px, py] = proj(m[0] / M0, m[1] / M0, m[2] / M0, cx, cy, Rr); k > Math.max(0, i - 120) ? c.lineTo(px, py) : c.moveTo(px, py); } c.stroke();
+      const m = en.mean[i], [px, py] = proj(m[0] / M0, m[1] / M0, m[2] / M0, cx, cy, Rr);
+      c.strokeStyle = '#c8102e'; c.lineWidth = 3; c.beginPath(); c.moveTo(cx, cy); c.lineTo(px, py); c.stroke();
+      c.fillStyle = '#c8102e'; c.beginPath(); c.arc(px, py, 4, 0, 7); c.fill();
+      c.fillStyle = '#9b9b9f'; c.font = '11px "JetBrains Mono", monospace'; c.textAlign = 'left';
+      c.fillText(t('tis')[B.tis], 10, 18);
+      c.fillText('Mz = ' + fmt(m[2], 3) + '   |Mxy| = ' + fmt(Math.hypot(m[0], m[1]), 3), 10, h - 10);
+    }
+    function drawChrono() {
+      const { c, w, h } = setupCv($('cvChrono')); c.fillStyle = '#0a0a0b'; c.fillRect(0, 0, w, h);
+      if (!B) return;
+      const seq = B.seq, ev = B.en.events, tmax = B.tmax, pl = 74, pr = 10, X = (tt) => pl + (tt / tmax) * (w - pl - pr);
+      const lanes = ['RF', 'G coupe', 'G phase', 'G lecture', 'Signal'], lh = (h - 30) / lanes.length;
+      c.font = '10px "JetBrains Mono", monospace';
+      lanes.forEach((l, k) => { const y0 = 8 + k * lh + lh / 2; c.strokeStyle = '#1e1e21'; c.beginPath(); c.moveTo(pl, y0); c.lineTo(w - pr, y0); c.stroke(); c.fillStyle = '#6c6c70'; c.textAlign = 'right'; c.fillText(lang === 'fr' ? l : ['RF', 'G slice', 'G phase', 'G read', 'Signal'][k], pl - 6, y0 + 3); });
+      const y = (k) => 8 + k * lh + lh / 2, gw = Math.max(1.2, (w - pl - pr) * 0.012);
+      const echoes = ev.filter((e) => e.kind === 'echo');
+      let lastLab = -1e9;
+      ev.forEach((e) => {
+        if (e.kind !== 'rf' || e.t > tmax) return;
+        const amp = (e.ang / 180) * lh * 0.42 + lh * 0.12, x = X(e.t);
+        c.fillStyle = e.ang >= 180 ? '#e0a458' : '#c8102e'; c.fillRect(x - gw / 2, y(0) - amp, gw, amp);
+        if (x - lastLab > 30) { c.fillStyle = '#9b9b9f'; c.textAlign = 'center'; c.fillText(Math.round(e.ang) + '°', x, y(0) - amp - 3); lastLab = x; }
+        c.fillStyle = '#55555a'; c.fillRect(x - gw, y(1) - lh * 0.22, gw * 2, lh * 0.22);
+      });
+      const readDur = Math.min((I.echoTimes(seq)[0] || 10) * 0.6, (seq.ETL > 1 ? seq.ESP * 0.6 : 8));
+      echoes.forEach((e) => {
+        if (e.t > tmax) return;
+        const x0 = X(e.t - readDur / 2), x1 = X(e.t + readDur / 2);
+        c.fillStyle = '#6c6c70'; c.fillRect(x0, y(3) - lh * 0.22, x1 - x0, lh * 0.22);
+        c.fillStyle = '#3a3a3d'; c.fillRect(X(e.t - readDur * 1.1), y(2) - lh * 0.15, Math.max(2, (x1 - x0) * 0.25), lh * 0.3);
+      });
+      // signal |Mxy| de la somme
+      const en = B.en, M0 = I.TISSUES[B.tis].PD || 1;
+      c.strokeStyle = '#c8102e'; c.lineWidth = 1.4; c.beginPath();
+      en.times.forEach((tt, k) => { const v = Math.hypot(en.mean[k][0], en.mean[k][1]) / M0, px = X(tt), py = y(4) + lh * 0.4 - v * lh * 0.8; k ? c.lineTo(px, py) : c.moveTo(px, py); }); c.stroke();
+      echoes.forEach((e) => { if (e.t <= tmax) { c.fillStyle = '#9b9b9f'; c.textAlign = 'center'; c.fillText(seq.kind === 'GRE' ? 'TE' : (echoes.length > 1 ? '' + (e.e + 1) : 'TE'), X(e.t), h - 6); } });
+      c.strokeStyle = '#f2f2f2'; c.lineWidth = 1; c.beginPath(); c.moveTo(X(bT), 4); c.lineTo(X(bT), h - 18); c.stroke();
+      c.fillStyle = '#6c6c70'; c.textAlign = 'right'; c.fillText(fmt(tmax, 0) + ' ms', w - pr, h - 6);
+    }
+    function drawTR() {
+      const { c, w, h } = setupCv($('cvTR')); c.fillStyle = '#0a0a0b'; c.fillRect(0, 0, w, h);
+      if (!B) return;
+      const TR = B.seq.TR, pl = 44, pb = 22, X = (tt) => pl + (tt / TR) * (w - pl - 10), Y = (v) => 10 + (1 - (v + 1) / 2) * (h - 10 - pb);
+      c.font = '10px "JetBrains Mono", monospace'; c.fillStyle = '#6c6c70'; c.textAlign = 'right'; c.strokeStyle = '#1e1e21';
+      [-1, -0.5, 0, 0.5, 1].forEach((v) => { c.beginPath(); c.moveTo(pl, Y(v)); c.lineTo(w - 10, Y(v)); c.stroke(); c.fillText(fmt(v, 1), pl - 4, Y(v) + 3); });
+      c.textAlign = 'center'; for (let k = 0; k <= 4; k++) c.fillText(fmt((TR * k) / 4, 0) + ' ms', X((TR * k) / 4), h - 6);
+      B.full.forEach((f) => {
+        const en = f.en; c.strokeStyle = COLORS[f.id]; c.lineWidth = 1.3;
+        c.setLineDash([4, 3]); c.beginPath(); en.times.forEach((tt, k) => { const p = [X(tt), Y(en.mean[k][2])]; k ? c.lineTo(...p) : c.moveTo(...p); }); c.stroke();
+        c.setLineDash([]); c.beginPath(); en.times.forEach((tt, k) => { const p = [X(tt), Y(Math.hypot(en.mean[k][0], en.mean[k][1]))]; k ? c.lineTo(...p) : c.moveTo(...p); }); c.stroke();
+      });
+    }
+    function blochTable() {
+      if (!B) { $('blochTab').innerHTML = ''; return; }
+      const seq = B.seq, e = I.effEcho(seq), te = I.echoTimes(seq)[e];
+      const rows = ['wm', 'gm', 'csf', 'fat', 'edema', 'hematoma'].map((id) => {
+        const T1 = I.TISSUES[id], ss = I.steadyState(id, seq), b = ss.echoes[e];
+        let f = null;
+        if ((seq.ETL | 0) <= 1) f = seq.kind === 'SE' ? I.formula.se(T1, seq.TR, seq.TE) : seq.kind === 'IR' ? I.formula.ir(T1, seq.TR, seq.TI, seq.TE) : I.formula.gre(T1, seq.TR, seq.TE, seq.flip);
+        return '<tr><td><span class="sw" style="background:' + COLORS[id] + '"></span>' + t('tis')[id] + '</td><td class="n">' + fmt(ss.mz, 4) + '</td><td class="n">' + fmt(b, 5) + '</td><td class="n">' + (f === null ? (lang === 'fr' ? 'train d\'échos : Bloch seul' : 'echo train: Bloch only') : fmt(f, 5)) + '</td><td class="n good">' + (f === null ? '' : Math.abs(b - f).toExponential(0)) + '</td></tr>';
+      });
+      $('blochTab').innerHTML = '<thead><tr>' + t('bCols').map((c, i) => '<th' + (i ? ' class="n"' : '') + '>' + c + (i === 2 ? ' (TE = ' + fmt(te, te < 10 ? 2 : 0) + ' ms)' : '') + '</th>').join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody>';
+    }
+    function blochLoop(now) {
+      if (S.view === 'bloch' && B) {
+        if (bLast === null) bLast = now;
+        const dt = Math.min(0.05, (now - bLast) / 1000); bLast = now;
+        if (bPlaying) { bT += dt * B.tmax / (6 / S.bSpeed); if (bT > B.tmax) bT = 0; }
+        draw3d(); drawChrono();
+        $('bClock').textContent = 't = ' + fmt(bT, bT < 100 ? 1 : 0) + ' ms';
+      } else bLast = null;
+      requestAnimationFrame(blochLoop);
+    }
+    $('bPlay').addEventListener('click', () => { bPlaying = !bPlaying; $('bPlay').textContent = bPlaying ? t('pause') : t('resume'); });
+    function renderBlochCtl() {
+      $('blochTis').innerHTML = ''; const b = $('blochTis');
+      ['wm', 'gm', 'csf', 'fat', 'edema', 'hematoma'].forEach((id) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'btn'; x.textContent = t('tisShort')[id]; x.setAttribute('aria-pressed', S.bTis === id); x.addEventListener('click', () => { S.bTis = id; renderBlochCtl(); prepBloch(); }); b.appendChild(x); });
+      $('bSpeed').innerHTML = '';
+      [[0.25, '×¼'], [1, '×1'], [3, '×3']].forEach(([v, l]) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'btn'; x.textContent = l; x.setAttribute('aria-pressed', S.bSpeed === v); x.addEventListener('click', () => { S.bSpeed = v; renderBlochCtl(); }); $('bSpeed').appendChild(x); });
+    }
+
+    // ------------------------------------------------------------------ onglet contraste
+    const CT_TIS = ['wm', 'gm', 'csf', 'fat', 'edema', 'hematoma'];
+    let C = null;
+    function prepContrast() {
+      const seq = S.seq, acq = S.acq, base = Object.assign({}, seq), sweep = (key, xs, mod) => CT_TIS.map((id) => xs.map((x) => { const s = Object.assign({}, base, mod ? mod(x) : { [key]: x }); return I.seqValid(s) ? I.theory(id, s, acq) : NaN; }));
+      const trX = Array.from({ length: 90 }, (_, k) => 10 * Math.pow(1200, k / 89));
+      const etl = Math.max(1, seq.ETL | 0);
+      const teX = seq.kind !== 'GRE' && etl > 1 ? Array.from({ length: etl }, (_, k) => (k + 1) * seq.ESP) : Array.from({ length: 90 }, (_, k) => 1 + (k / 89) * (seq.kind === 'GRE' ? 60 : 250));
+      C = { tr: { xs: trX, ys: sweep('TR', trX), cur: seq.TR, log: true, key: 'TR' }, te: { xs: teX, ys: sweep('TE', teX), cur: seq.TE, log: false, key: 'TE' } };
+      if (seq.kind === 'IR') { const xs = Array.from({ length: 90 }, (_, k) => 10 + (k / 89) * Math.min(4000, seq.TR - I.echoTimes(seq).slice(-1)[0] - 20)); C.x = { xs, ys: sweep('TI', xs), cur: seq.TI, log: false, key: 'TI' }; }
+      else if (seq.kind === 'GRE') { const xs = Array.from({ length: 90 }, (_, k) => 1 + k); C.x = { xs, ys: sweep('flip', xs), cur: seq.flip, log: false, key: 'flip' }; }
+      else C.x = null;
+      drawContrast();
+    }
+    function chartC(cv, d, unit) {
+      const { c, w, h } = setupCv(cv); c.fillStyle = '#0a0a0b'; c.fillRect(0, 0, w, h);
+      if (!d) { c.fillStyle = '#6c6c70'; c.font = '11px "JetBrains Mono", monospace'; c.textAlign = 'center'; c.fillText(t('capNone'), w / 2, h / 2); return; }
+      let hi = 0; d.ys.forEach((a) => a.forEach((v) => { if (isFinite(v)) hi = Math.max(hi, v); })); hi = hi * 1.08 || 1;
+      const pl = 40, pb = 22, x0 = d.xs[0], x1 = d.xs[d.xs.length - 1];
+      const X = (x) => pl + (d.log ? Math.log(x / x0) / Math.log(x1 / x0) : (x - x0) / (x1 - x0)) * (w - pl - 8), Y = (v) => 8 + (1 - v / hi) * (h - 8 - pb);
+      c.font = '10px "JetBrains Mono", monospace'; c.fillStyle = '#6c6c70'; c.strokeStyle = '#1e1e21'; c.textAlign = 'right';
+      for (let k = 0; k <= 4; k++) { const v = (hi * k) / 4; c.beginPath(); c.moveTo(pl, Y(v)); c.lineTo(w - 8, Y(v)); c.stroke(); c.fillText(fmt(v, 2), pl - 4, Y(v) + 3); }
+      c.textAlign = 'center';
+      const nice = (span) => { const p = Math.pow(10, Math.floor(Math.log10(span / 4))); return [1, 2, 5, 10].map((k) => k * p).find((st) => span / st <= 5); };
+      const stp = nice(x1 - x0), ticks = d.log ? [10, 100, 1000, 10000].filter((v) => v >= x0 && v <= x1) : Array.from({ length: 12 }, (_, k) => Math.ceil(x0 / stp) * stp + k * stp).filter((v) => v <= x1 + 1e-9);
+      ticks.forEach((v) => c.fillText(fmt(v, 0) + unit, X(v), h - 6));
+      d.ys.forEach((arr, i) => { c.strokeStyle = COLORS[CT_TIS[i]]; c.lineWidth = 1.5; c.beginPath(); let st = false; arr.forEach((v, k) => { if (!isFinite(v)) { st = false; return; } const p = [X(d.xs[k]), Y(v)]; st ? c.lineTo(...p) : c.moveTo(...p); st = true; }); c.stroke(); });
+      c.strokeStyle = '#c8102e'; c.setLineDash([4, 3]); c.beginPath(); c.moveTo(X(d.cur), 6); c.lineTo(X(d.cur), h - pb); c.stroke(); c.setLineDash([]);
+      cv.onclick = (e) => {
+        const r = cv.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left - pl) / (r.width - pl - 8)));
+        let v = d.log ? x0 * Math.pow(x1 / x0, f) : x0 + f * (x1 - x0);
+        if (d.key === 'TE' && S.seq.kind !== 'GRE' && S.seq.ETL > 1) v = Math.max(1, Math.min(S.seq.ETL, Math.round(v / S.seq.ESP))) * S.seq.ESP;
+        else if (d.key === 'TR') v = roundTR(v); else if (d.key === 'TE') v = v < 10 ? Math.round(v * 100) / 100 : Math.round(v); else v = Math.round(v);
+        S.seq[d.key] = v; S.preset = null; renderCtl(); schedule();
+      };
+    }
+    function drawContrast() {
+      if (!C) return;
+      $('lgC').innerHTML = CT_TIS.map((id) => '<span><i style="background:' + COLORS[id] + '"></i>' + t('tisShort')[id] + '</span>').join('');
+      $('capTR').textContent = t('capTR') + ' (TE = ' + fmt(S.seq.TE, S.seq.TE < 10 ? 2 : 0) + ' ms)'; $('capTE').textContent = t('capTE') + ' (TR = ' + fmt(S.seq.TR, 0) + ' ms)';
+      $('capX').textContent = S.seq.kind === 'IR' ? t('capTI') : S.seq.kind === 'GRE' ? t('capFlip') : t('capTI');
+      chartC($('cvCTR'), C.tr, ''); chartC($('cvCTE'), C.te, ''); chartC($('cvCX'), C.x, S.seq.kind === 'GRE' ? '°' : '');
+      const rows = t('ratRows').map(([a, b, l]) => { const r = I.theory(a, S.seq, S.acq) / I.theory(b, S.seq, S.acq); const read = r > 1.15 ? t('brighter') : r < 0.87 ? t('darker') : t('same'); return '<tr><td>' + l + '</td><td class="n">' + fmt(r, 2) + '</td><td>' + read + '</td></tr>'; });
+      $('ratios').innerHTML = '<thead><tr>' + t('ratCols').map((c, i) => '<th' + (i === 1 ? ' class="n"' : '') + '>' + c + '</th>').join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody>';
+    }
+
+    // ------------------------------------------------------------------ onglet scanner / IRM
+    let CTR = null;
+    function prepCt() {
+      if (CTR) return drawCt();
+      $('ctBusy').textContent = t('computing');
+      run({ type: 'ct' }, (r) => { CTR = r; $('ctBusy').textContent = ''; drawCt(); });
+    }
+    function drawCt() {
+      if (!CTR) return;
+      paintGray($('cvCt'), CTR.hu, 256, 35 - 40, 35 + 40);
+      [['t1', 'cvT1'], ['t2', 'cvT2'], ['flair', 'cvFl']].forEach(([p, id]) => paintGray($(id), CTR.mri[p].mag, 256, 0, pct(CTR.mri[p].mag, 0.997)));
+      const c = CTR.ctStats, m = CTR.mri, hu = (v) => (v > 0 ? '+' : '') + fmt(v, 0) + ' HU';
+      const ratio = (p, k) => fmt(m[p][k] / m[p].wm, 2) + ' ×';
+      const rows = [
+        [t('ctRows').hem, hu(c.hem - c.wm), ratio('t1', 'hem'), ratio('t2', 'hem'), ratio('flair', 'hem')],
+        [t('ctRows').ede, hu(c.ede - c.wm), ratio('t1', 'ede'), ratio('t2', 'ede'), ratio('flair', 'ede')],
+        [t('ctRows').bone, fmt(c.bone, 0) + ' HU · ' + t('bright'), t('dark'), t('dark'), t('dark')],
+        [t('ctRows').csf, fmt(c.csf, 0) + ' HU', ratio('t1', 'csf'), ratio('t2', 'csf'), ratio('flair', 'csf')],
+        [t('ctRows').time, '≈ 1 ' + t('s'), fmtTime(m.t1.time), fmtTime(m.t2.time), fmtTime(m.flair.time)],
+        [t('ctRows').xray, t('yes'), t('no'), t('no'), t('no')],
+      ];
+      $('ctTab').innerHTML = '<thead><tr>' + t('ctCols').map((x) => '<th>' + x + '</th>').join('') + '</tr></thead><tbody>' + rows.map((r) => '<tr>' + r.map((x, i) => (i ? '<td>' : '<th>') + x + (i ? '</td>' : '</th>')).join('') + '</tr>').join('') + '</tbody>';
+    }
+
+    // ------------------------------------------------------------------ onglet vérifications
+    let CHK = null;
+    function prepChecks() {
+      $('chkBusy').textContent = t('computing');
+      run({ type: 'checks', bw: S.acq.bw, lang }, (r) => { CHK = r; $('chkBusy').textContent = ''; drawChecks(); });
+    }
+    function drawChecks() {
+      if (!CHK) return;
+      $('chk').innerHTML = '<thead><tr>' + t('chkCols').map((x) => '<th>' + x + '</th>').join('') + '</tr></thead><tbody>' + CHK.res.map(([k, a, b, good]) => '<tr><td>' + t('chk')[k] + '</td><td>' + a + '</td><td>' + b + '</td><td class="' + (good ? 'good' : 'bad') + '">' + (good ? '✓ ' + t('ok') : '✗ ' + t('fail')) + '</td></tr>').join('') + '</tbody>';
+    }
+
+    // ------------------------------------------------------------------ navigation, langue
+    function refreshView() {
+      if (S.view === 'bloch') { renderBlochCtl(); prepBloch(); }
+      if (S.view === 'contrast') prepContrast();
+      if (S.view === 'ct') prepCt();
+      if (S.view === 'checks' && !CHK) prepChecks();
+    }
+    function setView(v) {
+      S.view = v;
+      document.querySelectorAll('.tab').forEach((b) => b.setAttribute('aria-selected', b.dataset.view === v));
+      document.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== v; });
+      $('ctlCol').hidden = v === 'ct' || v === 'checks';
+      document.querySelector('.grid').style.gridTemplateColumns = v === 'ct' || v === 'checks' ? 'minmax(0, 1fr)' : '';
+      try { history.replaceState(null, '', '#' + v); } catch (e) {}
+      refreshView();
+    }
+    document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+    function setLang(l) {
+      lang = l; document.documentElement.lang = l;
+      document.querySelectorAll('[data-t]').forEach((el) => { const v = T[l][el.dataset.t]; if (typeof v === 'string') el.textContent = v; });
+      document.querySelectorAll('.lang button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.lang === l));
+      try { localStorage.setItem('lang', l); } catch (e) {}
+      $('play').textContent = anim ? t('stop') : t('play'); $('bPlay').textContent = bPlaying ? t('pause') : t('resume');
+      renderCtl(); kpis(); roiTable(); drawCt(); if (CHK) prepChecks(); refreshView();
+    }
+    document.querySelectorAll('.lang button').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
+    window.addEventListener('resize', () => { if (S.view === 'contrast') drawContrast(); if (S.view === 'bloch') drawTR(); });
+    const h0 = (location.hash || '').slice(1);
+    setLang(lang);
+    setView(['image', 'bloch', 'contrast', 'ct', 'checks'].includes(h0) ? h0 : 'image');
+    computeImage();
+    requestAnimationFrame(blochLoop);
+  })();
+  </script>
+</body>
+</html>
