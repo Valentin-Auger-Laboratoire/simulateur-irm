@@ -98,8 +98,8 @@
     <div class="top">
       <a class="back" href="https://valentin-auger-laboratoire.github.io/portfolio/#projets" data-t="back">← Retour au portfolio</a>
       <div class="lang" role="group" aria-label="Langue / Language">
-        <button type="button" data-lang="fr" aria-pressed="true">FR</button>
         <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        <button type="button" data-lang="fr" aria-pressed="true">FR</button>
       </div>
     </div>
     <p class="eyebrow" data-t="eyebrow">Outil d'imagerie médicale · résonance magnétique</p>
@@ -224,8 +224,8 @@
     'use strict';
     const I = window.IRM;
     const $ = (id) => document.getElementById(id);
-    let lang = 'fr';
-    try { lang = localStorage.getItem('lang') || ((navigator.language || 'fr').toLowerCase().startsWith('fr') ? 'fr' : 'en'); } catch (e) {}
+    let lang = 'en';
+    try { lang = (localStorage.getItem('langChoix') === 'fr' ? 'fr' : 'en'); } catch (e) {}
     const T = {
       fr: {
         back: '← Retour au portfolio', eyebrow: "Outil d'imagerie médicale · résonance magnétique", title: "Simulateur d'IRM : de l'aimantation à l'image",
@@ -804,7 +804,7 @@
       lang = l; document.documentElement.lang = l;
       document.querySelectorAll('[data-t]').forEach((el) => { const v = T[l][el.dataset.t]; if (typeof v === 'string') el.textContent = v; });
       document.querySelectorAll('.lang button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.lang === l));
-      try { localStorage.setItem('lang', l); } catch (e) {}
+      try { localStorage.setItem('lang', l); localStorage.setItem('langChoix', l); } catch (e) {}
       $('play').textContent = anim ? t('stop') : t('play'); $('bPlay').textContent = bPlaying ? t('pause') : t('resume');
       renderCtl(); kpis(); roiTable(); drawCt(); if (CHK) prepChecks(); refreshView();
     }
